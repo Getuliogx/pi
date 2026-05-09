@@ -1,0 +1,97 @@
+name: Build OPL 2241 1080p REAL FINAL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ps2dev/ps2dev:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install tools and compiler libs
+        shell: sh
+        run: |
+          set -e
+          if command -v apk >/dev/null 2>&1; then
+            apk update
+            apk add --no-cache make zip unzip findutils coreutils grep sed tar xz gmp mpfr4 mpc1 || \
+            apk add --no-cache make zip unzip findutils coreutils grep sed tar xz gmp-dev mpfr-dev mpc1-dev || \
+            apk add --no-cache make zip unzip findutils coreutils grep sed tar xz gmp-dev mpfr-dev libmpc-dev
+          elif command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y make zip unzip findutils coreutils grep sed tar xz-utils libgmp10 libmpfr6 libmpc3 libgmp-dev libmpfr-dev libmpc-dev
+          else
+            echo "ERRO: não achei apk nem apt-get."
+            exit 1
+          fi
+
+          echo "Ferramentas:"
+          command -v make
+          command -v unzip
+          command -v find
+          command -v mips64r5900el-ps2-elf-gcc || true
+
+      - name: Unpack source ZIP
+        shell: sh
+        run: |
+          set -e
+          rm -rf src out
+          mkdir -p src out
+
+          ZIP="OPL_2241_1080P_REAL_FINAL_SOURCE_FULL.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "ERRO: não achei $ZIP na raiz do repositório."
+            echo "Arquivos encontrados:"
+            ls -la
+            exit 1
+          fi
+
+          unzip -q "$ZIP" -d src
+          echo "Source extraído:"
+          find src -maxdepth 3 -type d | head -60
+
+      - name: Compile OPL
+        shell: sh
+        run: |
+          set -e
+          MAKEFILE="$(find src -maxdepth 5 -type f \( -name Makefile -o -name makefile \) | head -n 1)"
+          if [ -z "$MAKEFILE" ]; then
+            echo "ERRO: não achei Makefile dentro do source."
+            find src -maxdepth 4 -type f | head -120
+            exit 1
+          fi
+
+          SRCDIR="$(dirname "$MAKEFILE")"
+          echo "Compilando em: $SRCDIR"
+          cd "$SRCDIR"
+
+          make clean || true
+          make -j2 || make
+
+      - name: Collect ELF
+        shell: sh
+        run: |
+          set -e
+          mkdir -p out
+          echo "Procurando ELF:"
+          find src -type f \( -iname "*.elf" -o -iname "*.ELF" \) -exec ls -lh {} \;
+
+          ELF="$(find src -type f \( -iname "*.elf" -o -iname "*.ELF" \) | head -n 1)"
+          if [ -z "$ELF" ]; then
+            echo "ERRO: nenhum ELF encontrado."
+            exit 1
+          fi
+
+          cp "$ELF" out/OPNPS2LD-2241-1080P-REAL-FINAL.ELF
+          ls -lh out/
+
+      - name: Upload ELF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD-2241-1080P-REAL-FINAL-ELF
+          path: out/OPNPS2LD-2241-1080P-REAL-FINAL.ELF
