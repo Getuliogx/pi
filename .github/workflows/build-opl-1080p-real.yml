@@ -7,23 +7,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container: ps2dev/ps2dev:latest
+    defaults:
+      run:
+        shell: sh
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Unpack source ZIP
-        shell: bash
         run: |
           set -e
           rm -rf src out
           mkdir -p src out
           unzip -q OPL_2241_1080P_REAL_BOOT_ENGINE_SOURCE_FULL.zip -d src
-          ls -lah src
+          ls -la src
           test -d src/opl_1080p_real
 
       - name: Compile OPL
-        shell: bash
         run: |
           set -e
           cd src/opl_1080p_real
@@ -31,13 +32,12 @@ jobs:
           make -j2
 
       - name: Collect ELF
-        shell: bash
         run: |
           set -e
           mkdir -p out
-          find src/opl_1080p_real -type f \( -iname "*.ELF" -o -iname "*.elf" \) -print
-          find src/opl_1080p_real -type f \( -iname "*.ELF" -o -iname "*.elf" \) -exec cp {} out/ \;
-          ls -lah out
+          find src/opl_1080p_real -type f -name '*.ELF' -print -exec cp {} out/ \; || true
+          find src/opl_1080p_real -type f -name '*.elf' -print -exec cp {} out/ \; || true
+          ls -la out
           test "$(find out -type f | wc -l)" -gt 0
 
       - name: Upload ELF artifact
