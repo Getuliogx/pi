@@ -1,0 +1,47 @@
+name: Build OPL 2241 1080p REAL BOOT ENGINE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unpack source ZIP
+        shell: bash
+        run: |
+          set -e
+          rm -rf src out
+          mkdir -p src out
+          unzip -q OPL_2241_1080P_REAL_BOOT_ENGINE_SOURCE_FULL.zip -d src
+          ls -lah src
+          test -d src/opl_1080p_real
+
+      - name: Compile OPL
+        shell: bash
+        run: |
+          set -e
+          cd src/opl_1080p_real
+          make clean || true
+          make -j2
+
+      - name: Collect ELF
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          find src/opl_1080p_real -type f \( -iname "*.ELF" -o -iname "*.elf" \) -print
+          find src/opl_1080p_real -type f \( -iname "*.ELF" -o -iname "*.elf" \) -exec cp {} out/ \;
+          ls -lah out
+          test "$(find out -type f | wc -l)" -gt 0
+
+      - name: Upload ELF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPNPS2LD-2241-1080P-REAL-BOOT-ENGINE-ELF
+          path: out/*
