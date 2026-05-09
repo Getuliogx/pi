@@ -6,42 +6,100 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ps2dev/ps2dev:latest
-    defaults:
-      run:
-        shell: sh
+    container:
+      image: ps2dev/ps2dev:latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install build tools inside container
+        shell: sh
+        run: |
+          set -e
+          echo "Checking package manager..."
+          if command -v apk >/dev/null 2>&1; then
+            apk add --no-cache make zip unzip findutils coreutils grep sed
+          elif command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y make zip unzip findutils coreutils grep sed
+          else
+            echo "No apk/apt-get found. Trying to continue..."
+          fi
+
+          echo "Tool check:"
+          command -v make || true
+          command -v unzip || true
+          command -v find || true
+          command -v ee-gcc || true
+
       - name: Unpack source ZIP
+        shell: sh
         run: |
           set -e
           rm -rf src out
           mkdir -p src out
+
+          if [ ! -f "OPL_2241_1080P_REAL_BOOT_ENGINE_SOURCE_FULL.zip" ]; then
+            echo "ERRO: não achei OPL_2241_1080P_REAL_BOOT_ENGINE_SOURCE_FULL.zip na raiz do repositório."
+            echo "Arquivos encontrados:"
+            ls -la
+            exit 1
+          fi
+
           unzip -q OPL_2241_1080P_REAL_BOOT_ENGINE_SOURCE_FULL.zip -d src
-          ls -la src
-          test -d src/opl_1080p_real
+
+          echo "Pastas extraídas:"
+          find src -maxdepth 3 -type d | head -80
 
       - name: Compile OPL
+        shell: sh
         run: |
           set -e
-          cd src/opl_1080p_real
+
+          if ! command -v make >/dev/null 2>&1; then
+            echo "ERRO: make ainda não existe no container."
+            exit 127
+          fi
+
+          if ! command -v ee-gcc >/dev/null 2>&1; then
+            echo "AVISO: ee-gcc não apareceu no PATH. Vou tentar mesmo assim."
+          fi
+
+          MAKEFILE="$(find src -maxdepth 5 -type f \( -name Makefile -o -name makefile \) | head -n 1)"
+          if [ -z "$MAKEFILE" ]; then
+            echo "ERRO: não achei Makefile dentro do source extraído."
+            find src -maxdepth 4 -type f | head -120
+            exit 1
+          fi
+
+          SRCDIR="$(dirname "$MAKEFILE")"
+          echo "Compilando em: $SRCDIR"
+          cd "$SRCDIR"
+
           make clean || true
-          make -j2
+          make -j2 || make
 
       - name: Collect ELF
+        shell: sh
         run: |
           set -e
           mkdir -p out
-          find src/opl_1080p_real -type f -name '*.ELF' -print -exec cp {} out/ \; || true
-          find src/opl_1080p_real -type f -name '*.elf' -print -exec cp {} out/ \; || true
-          ls -la out
-          test "$(find out -type f | wc -l)" -gt 0
+
+          echo "Procurando ELF gerado..."
+          find src -type f \( -iname "*.elf" -o -iname "*.ELF" \) -exec ls -lh {} \;
+
+          ELF="$(find src -type f \( -iname "*.elf" -o -iname "*.ELF" \) | head -n 1)"
+          if [ -z "$ELF" ]; then
+            echo "ERRO: compilou, mas não achei nenhum .ELF."
+            exit 1
+          fi
+
+          cp "$ELF" out/OPNPS2LD-2241-1080P-REAL-BOOT-ENGINE.ELF
+          ls -lh out/
 
       - name: Upload ELF artifact
         uses: actions/upload-artifact@v4
         with:
           name: OPNPS2LD-2241-1080P-REAL-BOOT-ENGINE-ELF
-          path: out/*
+          path: out/OPNPS2LD-2241-1080P-REAL-BOOT-ENGINE.ELF
